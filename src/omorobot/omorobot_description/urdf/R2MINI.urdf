@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot name="R2MINI" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+    <material name="black">
+        <color rgba="0.0 0.0 0.0 1.0"/>
+    </material>
+
+    <material name="dark">
+        <color rgba="0.3 0.3 0.3 1.0"/>
+    </material>
+
+    <material name="light_black">
+        <color rgba="0.4 0.4 0.4 1.0"/>
+    </material>
+
+    <material name="blue">
+        <color rgba="0.0 0.0 0.8 1.0"/>
+    </material>
+
+    <material name="green">
+        <color rgba="0.0 0.8 0.0 1.0"/>
+    </material>
+
+    <material name="grey">
+        <color rgba="0.5 0.5 0.5 1.0"/>
+    </material>
+
+    <material name="orange">
+        <color rgba="1.0 0.4235 0.0392 1.0"/>
+    </material>
+
+    <material name="brown">
+        <color rgba="0.588 0.294 0.0 1.0"/>
+    </material>
+
+    <material name="red">
+        <color rgba="0.8 0.0 0.0 1.0"/>
+    </material>
+
+    <material name="white">
+        <color rgba="1.0 1.0 1.0 1.0"/>
+    </material>
+
+    <material name="yellow">
+        <color rgba="1.0 1.0 0.0 1.0"/>
+    </material>
+
+    <link name="base_footprint"/>
+
+    <joint name="base_joint" type="fixed">
+        <origin xyz="0.0 0.0 0.018" rpy="0.0 0.0 0.0"/>
+        <parent link="base_footprint"/>
+        <child link="base_link"/>
+    </joint>
+
+    <link name="base_link">
+        <visual>
+            <origin xyz="-0.037 0.0 0.065" rpy="0.0 0.0 1.57"/>
+            <geometry>
+                <mesh filename="package://omorobot_description/meshes/bases/R2MINI_BODY.stl" scale="0.001 0.001 0.001"/>
+            </geometry>
+            <material name="brown"/>
+        </visual>
+        <collision>
+            <origin xyz="-0.037 0.0 0.06" rpy="0.0 0.0 0.0"/>
+            <geometry>
+                <box size="0.2 0.19 0.16"/>
+            </geometry>
+        </collision>
+    </link>
+
+    <joint name="wheel_left_joint" type="continuous">
+        <origin xyz="0.0 0.09 0.015" rpy="-1.57 0.0 0.0"/>
+        <parent link="base_link"/>
+        <child link="wheel_left_link"/>
+        <axis xyz="0.0 0.0 1.0"/>
+    </joint>
+
+    <link name="wheel_left_link">
+        <visual>
+            <origin xyz="0.034 -0.034 -0.0135" rpy="0.0 -1.57 0.0"/>
+            <geometry>
+                <mesh filename="package://omorobot_description/meshes/wheels/R2MINI_WHEEL.stl" scale="0.001 0.001 0.001"/>
+            </geometry>
+            <material name="blue"/>
+        </visual>
+        <collision>
+            <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
+            <geometry>
+                <cylinder radius="0.034" length="0.027"/>
+            </geometry>
+        </collision>
+    </link>
+
+    <joint name="wheel_right_joint" type="continuous">
+        <origin xyz="0.0 -0.09 0.015" rpy="-1.57 0.0 0.0"/>
+        <parent link="base_link"/>
+        <child link="wheel_right_link"/>
+        <axis xyz="0.0 0.0 1.0"/>
+    </joint>
+
+    <link name="wheel_right_link">
+        <visual>
+            <origin xyz="-0.034 -0.034 0.0135" rpy="0.0 1.57 0.0"/>
+            <geometry>
+                <mesh filename="package://omorobot_description/meshes/wheels/R2MINI_WHEEL.stl" scale="0.001 0.001 0.001"/>
+            </geometry>
+            <material name="blue"/>
+        </visual>
+        <collision>
+            <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
+            <geometry>
+                <cylinder radius="0.034" length="0.027"/>
+            </geometry>
+        </collision>
+    </link>
+
+    <!-- <joint name="imu_joint" type="fixed">
+        <origin xyz="-0.02 0.02 0.05" rpy="0.0 0.0 0.0"/>
+        <parent link="base_link"/>
+        <child link="imu_link"/>
+    </joint>
+
+    <link name="imu_link"/> -->
+
+    <joint name="scan_joint" type="fixed">
+        <origin xyz="0.0155 0.0 0.064" rpy="3.14 0.0 0.0"/>
+        <parent link="base_link"/>
+        <child link="base_scan"/>
+        <axis xyz="0.0 0.0 0.0"/>
+    </joint>
+
+    <link name="base_scan">
+        <visual>
+            <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
+            <geometry>
+                <cylinder radius="0.019" length="0.012"/>
+            </geometry>
+            <material name="green"/>
+        </visual>
+        <collision>
+            <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
+            <geometry>
+                <cylinder radius="0.019" length="0.012"/>
+            </geometry>
+        </collision>
+    </link>
+
+</robot>

@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>omorobot</name>
+  <version>0.0.0</version>
+  <description>Meta package for omorobot</description>
+  <maintainer email="t.shaped.person@gmail.com">Dr.K</maintainer>
+  <license>Apache Licese, Version 2.0</license>
+
+  <depend>omorobot_bringup</depend>
+  <depend>omorobot_cartographer</depend>
+  <depend>omorobot_description</depend>
+  <depend>omorobot_navigation2</depend>
+  <depend>omorobot_robot</depend>
+  <depend>omorobot_teleop</depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
