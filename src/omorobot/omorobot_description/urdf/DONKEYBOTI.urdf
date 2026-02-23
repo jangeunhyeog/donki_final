@@ -107,7 +107,7 @@
     </link>
 
     <joint name="scan_joint" type="fixed">
-        <origin xyz="-0.335 0.0 0.432" rpy="0.0 0.0 0.0"/>
+        <origin xyz="0.335 0.0 0.5295" rpy="0.0 0.0 0.0"/>
         <parent link="base_link"/>
         <child link="base_scan"/>
         <axis xyz="0.0 0.0 0.0"/>

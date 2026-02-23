@@ -26,7 +26,7 @@ def generate_launch_description():
         lidar_yaml = LaunchConfiguration('lidar_yaml', default=os.path.join(bringup_dir, 'param', LIDAR_MODEL+'.yaml'))
     robot_yaml = LaunchConfiguration('robot_yaml', default=os.path.join(robot_dir, 'param', ROBOT_MODEL+'.yaml'))
     use_sim_time = LaunchConfiguration('use_sim_time', default='false')
-    launch_pcl2scan = LaunchConfiguration('launch_pcl2scan', default='true')
+    launch_pcl2scan = LaunchConfiguration('launch_pcl2scan', default='false')
 
     lidar_yaml_arg = DeclareLaunchArgument('lidar_yaml', default_value=lidar_yaml)
     robot_yaml_arg = DeclareLaunchArgument('robot_yaml', default_value=robot_yaml)
@@ -58,13 +58,6 @@ def generate_launch_description():
         launch_arguments={'use_sim_time': use_sim_time}.items()
     )
 
-    base_footprint_to_base_link = Node(
-        package='tf2_ros',
-        executable='static_transform_publisher',
-        name='base_footprint_to_base_link',
-        arguments=['0', '0', '0.1005', '0', '0', '0', 'base_footprint', 'base_link']
-    )
-
     ld = LaunchDescription()
     ld.add_action(lidar_yaml_arg)
     ld.add_action(robot_yaml_arg)
@@ -74,6 +67,5 @@ def generate_launch_description():
     ld.add_action(lidar_node)    
     ld.add_action(pointcloud_to_laserscan_node)
     ld.add_action(robot_state_publisher_node)
-    ld.add_action(base_footprint_to_base_link)
 
     return ld

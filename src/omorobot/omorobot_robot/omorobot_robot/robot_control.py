@@ -68,6 +68,8 @@ class RobotControl(Node):
         self.tf_bc = TransformBroadcaster(self)
         self.timer_5ms = self.create_timer(0.005, self.update_encoder)                                      # 5ms timer
         self.timer_10ms = self.create_timer(0.01, self.update_robot)                                        # 10ms timer
+        self.last_cmd_time = self.get_clock().now()
+        self.timer_watchdog = self.create_timer(0.1, self.watchdog_callback)                                # 100ms watchdog timer
 
         self.ph.read_packet()
         self.enc_lh, self.enc_rh = None, None
@@ -83,10 +85,17 @@ class RobotControl(Node):
         self.get_logger().info(str_info)
 
     def cmd_vel_callback(self, msg):
+        self.last_cmd_time = self.get_clock().now()
         self.print(f"DEBUG: cmd_vel received v={msg.linear.x}, w={msg.angular.z}")
         v = max(-self.motor_max_lin_vel, min(self.motor_max_lin_vel, msg.linear.x))
         w = max(-self.motor_max_ang_vel, min(self.motor_max_ang_vel, msg.angular.z))
         self.ph.vw_command(v * 1000.0, w * 1000.0)                                                          # form m/s & rad/s to mm/s & mrad/s
+
+    def watchdog_callback(self):
+        time_diff = (self.get_clock().now() - self.last_cmd_time).nanoseconds * 1e-9
+        if time_diff > 0.5:
+            # 0.5초 이상 명령이 없으면 정지 명령 송신
+            self.ph.vw_command(0.0, 0.0)
 
     def update_encoder(self):
         self.ph.read_packet()
@@ -184,8 +193,11 @@ def main(args=None):
     except Exception as e:
         node.get_logger().error(f'Exception occurred: {e}')
     finally:
+        node.get_logger().info('Shutting down... sending stop command.')
+        node.ph.vw_command(0.0, 0.0)
         node.destroy_timer(node.timer_5ms)
         node.destroy_timer(node.timer_10ms)
+        node.destroy_timer(node.timer_watchdog)
         node.ph.close_port()
         node.destroy_node()
         rclpy.shutdown()
