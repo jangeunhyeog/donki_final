@@ -8,7 +8,7 @@ log/
 *.ply
 *.bin
 *.txt
-
+!CMakeLists.txt
 .vscode/
 .idea/
 

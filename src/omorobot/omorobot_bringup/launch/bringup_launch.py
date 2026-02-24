@@ -43,14 +43,21 @@ def generate_launch_description():
     #     launch_arguments={'lidar_yaml': lidar_yaml}.items()
     # )
 
-    m300_pkg_dir = get_package_share_directory('pacecat_m300_driver')
-    lidar_node = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([m300_pkg_dir, '/launch/LDS-M300-E.launch']),
-    )
+    # m300_pkg_dir = get_package_share_directory('pacecat_m300_driver')
+    # lidar_node = IncludeLaunchDescription(
+    #     PythonLaunchDescriptionSource([m300_pkg_dir, '/launch/LDS-M300-E.launch']),
+    # )
 
-    pointcloud_to_laserscan_node = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([bringup_dir, '/launch/pointcloud_to_laserscan_launch.py']),
-        condition=IfCondition(launch_pcl2scan)
+    lio_nav_pkg_dir = get_package_share_directory('lio_nav_bringup')
+    pcl2scan_param_file = os.path.join(lio_nav_pkg_dir, 'config', 'pcl2scan_params.yaml')
+    
+    pointcloud_to_laserscan_node = Node(
+        package='pointcloud_to_laserscan',
+        executable='pointcloud_to_laserscan_node',
+        name='pointcloud_to_laserscan',
+        remappings=[('cloud_in', '/cloud_registered_body'), ('scan', '/scan')],
+        parameters=[pcl2scan_param_file],
+        output='screen'
     )
 
     robot_state_publisher_node = IncludeLaunchDescription(
@@ -64,7 +71,7 @@ def generate_launch_description():
     ld.add_action(use_sim_time_arg)
     ld.add_action(launch_pcl2scan_arg)
     ld.add_action(robot_node)
-    ld.add_action(lidar_node)    
+    # ld.add_action(lidar_node)    
     ld.add_action(pointcloud_to_laserscan_node)
     ld.add_action(robot_state_publisher_node)
 

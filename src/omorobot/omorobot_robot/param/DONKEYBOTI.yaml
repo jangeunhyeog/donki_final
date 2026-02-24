@@ -1,5 +1,6 @@
 robot_control:
   ros__parameters:
+    publish_tf: false
     port:
       name: "/dev/ttyUSB0"
       baudrate: 115200

@@ -23,6 +23,7 @@ class RobotControl(Node):
         self.declare_parameter('sensor.old_enc_pulse', 44.0)
         self.declare_parameter('sensor.new_enc_pulse', 1440.0)
         self.declare_parameter('sensor.use_imu', False)
+        self.declare_parameter('publish_tf', True)
         
         port = self.get_parameter('port.name').value
         baudrate = self.get_parameter('port.baudrate').value
@@ -54,6 +55,9 @@ class RobotControl(Node):
         self.print(f'{"sensor.enc_pulse":20} {self.enc_pulse}')
         self.print(f'{"distance per pulse":20} {self.distance_per_pulse}')
         self.print(f'{"sensor.use_imu":20} {self.use_imu}')
+
+        self.publish_tf = self.get_parameter('publish_tf').value
+        self.print(f'{"publish_tf":20} {self.publish_tf}')
 
         self.ph = PacketHandler(port, baudrate)
         self.ph.start_communication()
@@ -162,7 +166,8 @@ class RobotControl(Node):
         odom_tf.transform.translation.y = odometry.pose.pose.position.y
         odom_tf.transform.translation.z = odometry.pose.pose.position.z
         odom_tf.transform.rotation = odometry.pose.pose.orientation
-        self.tf_bc.sendTransform(odom_tf)
+        if self.publish_tf:
+            pass # self.tf_bc.sendTransform(odom_tf) # Disabled to prevent TF conflict with Fast-LIO
 
     def update_jointstate(self, time_now):
         self.wheel_lh_pos += self.delta_lh * self.distance_per_pulse / self.wheel_radius                    # wheel angle (rad)

@@ -1,9 +1,9 @@
 pointcloud_to_laserscan:
   ros__parameters:
-    target_frame: base_link
+    target_frame: base_scan
     transform_tolerance: 0.1
-    min_height: 0.30      # base_link (지면 부근) 기준 30cm 위부터 (바닥 노이즈 제거)
-    max_height: 1.00      # base_link 기준 100cm (1m) 까지만 (천장 노이즈 완벽 차단)
+    min_height: -0.15      # base_scan 기준 -15cm 위부터 (원래 base_link 기준 30cm 와 동일)
+    max_height: 0.15      # base_scan 기준 +55cm 까지만 (원래 base_link 기준 100cm 와 동일)
     angle_min: -3.14159    # -M_PI
     angle_max: 3.14159     # M_PI
     angle_increment: 0.0087 # M_PI/360.0 (resolution)
