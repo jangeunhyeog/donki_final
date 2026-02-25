@@ -436,7 +436,18 @@ private:
                     
                     // --- Ground Identification ---
                     int ground_z_idx = valid_z_indices[0]; 
-                    processed_grid[idx].ground_z = ground_z_idx * vertical_resolution_;
+                    double ground_z_m = ground_z_idx * vertical_resolution_;
+
+                    // --- Ceiling-Only Detection ---
+                    // If the detected "ground" is far above the robot, this cell
+                    // likely has NO real ground data (only ceiling from M300 horizontal scan).
+                    // Skip it → stays as unknown(-1), preventing false obstacles.
+                    // Real ramps are covered by the camera's ground data, so they won't trigger this.
+                    if (has_robot_pose && (ground_z_m > rz + ceiling_cutoff_)) {
+                        continue; // Ceiling-only cell → leave as unknown
+                    }
+
+                    processed_grid[idx].ground_z = ground_z_m;
                     processed_grid[idx].has_data = true;
 
                     // --- Ceiling & Obstacle Check ---

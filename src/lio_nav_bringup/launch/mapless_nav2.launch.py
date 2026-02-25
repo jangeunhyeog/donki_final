@@ -36,14 +36,16 @@ def generate_launch_description():
     remappings = [('/tf', 'tf'), ('/tf_static', 'tf_static')]
 
     # 1. PointCloud → 2D LaserScan
-    pcl2scan_node = Node(
-        package='pointcloud_to_laserscan',
-        executable='pointcloud_to_laserscan_node',
-        name='pointcloud_to_laserscan',
-        remappings=[('cloud_in', '/cloud_registered_body'), ('scan', '/scan')],
-        parameters=[pcl2scan_config],
-        output='screen'
-    )
+    #    bringup_launch.py에서 이미 실행하므로 여기서는 제거
+    #    (2개 동시 실행 시 QoS 충돌로 point cloud 사라짐)
+    # pcl2scan_node = Node(
+    #     package='pointcloud_to_laserscan',
+    #     executable='pointcloud_to_laserscan_node',
+    #     name='pointcloud_to_laserscan',
+    #     remappings=[('cloud_in', '/cloud_registered_body'), ('scan', '/scan')],
+    #     parameters=[pcl2scan_config],
+    #     output='screen'
+    # )
 
     # 2. Nav2 Core Nodes (collision_monitor 빼고 직접 실행)
     controller_server = Node(
@@ -118,7 +120,6 @@ def generate_launch_description():
 
     return LaunchDescription([
         SetEnvironmentVariable('RCUTILS_LOGGING_BUFFERED_STREAM', '1'),
-        pcl2scan_node,
         controller_server,
         smoother_server,
         planner_server,
