@@ -13,6 +13,7 @@
 #include <Eigen/Dense>
 #include <Eigen/Eigenvalues>
 #include <map>
+#include <unordered_map>
 #include <set>
 #include <vector>
 #include <cmath>
@@ -57,14 +58,34 @@ public:
         this->get_parameter("map_frame_id", map_frame_id_);
         this->get_parameter("robot_frame_id", robot_frame_id_);
 
+        // Dynamic Obstacle Parameters
+        this->declare_parameter<int>("max_z_points", 30);      // Max accumulation per bin
+        this->declare_parameter<int>("z_decay_step", 1);       // Amount to reduce per decay cycle (2s)
+        this->declare_parameter<int>("z_clear_step", 5);       // Aggressive clear when ground is flatly observed
+        
         // Costmap Parameters
         this->declare_parameter<double>("inflation_radius", 1.0);
         this->declare_parameter<double>("cost_scaling_factor", 5.0);
-        this->declare_parameter<double>("robot_radius", 0.4); // Included buffer
+        this->declare_parameter<double>("robot_radius", 0.4); // Used for inflation inscribed
         
+        // Rectangular footprint
+        this->declare_parameter<double>("footprint_x_max", 0.35); // Front
+        this->declare_parameter<double>("footprint_x_min", -1.1);   // Back
+        this->declare_parameter<double>("footprint_y_max", 0.45);   // Left
+        this->declare_parameter<double>("footprint_y_min", -0.45);  // Right
+
         this->get_parameter("inflation_radius", inflation_radius_);
         this->get_parameter("cost_scaling_factor", cost_scaling_factor_);
         this->get_parameter("robot_radius", robot_radius_);
+
+        this->get_parameter("footprint_x_max", footprint_x_max_);
+        this->get_parameter("footprint_x_min", footprint_x_min_);
+        this->get_parameter("footprint_y_max", footprint_y_max_);
+        this->get_parameter("footprint_y_min", footprint_y_min_);
+
+        this->get_parameter("max_z_points", max_z_points_);
+        this->get_parameter("z_decay_step", z_decay_step_);
+        this->get_parameter("z_clear_step", z_clear_step_);
 
         // Height resolution for vertical discretization (e.g., 5cm)
 
@@ -110,7 +131,7 @@ public:
 
 private:
     struct GridCell {
-        std::map<int, int> z_histogram; // Heavy (Kept only for active area)
+        std::unordered_map<int, int> z_histogram; // Faster hash map
         bool visited = false; // New: Marks if this cell has been processed in Local Map
         
         // Cache: Save last calculation results from generateGrid
@@ -147,6 +168,15 @@ private:
     double inflation_radius_;
     double cost_scaling_factor_;
     double robot_radius_;
+
+    double footprint_x_max_;
+    double footprint_x_min_;
+    double footprint_y_max_;
+    double footprint_y_min_;
+    
+    int max_z_points_;
+    int z_decay_step_;
+    int z_clear_step_;
     
     // Track active map area
     int min_grid_x_, max_grid_x_;
@@ -181,8 +211,11 @@ private:
             int grid_y = static_cast<int>(std::floor(pt.y / grid_resolution_));
             int z_idx = static_cast<int>(std::floor(pt.z / vertical_resolution_));
 
-            // Accumulate hit count per Z-level
-            elevation_map_[{grid_x, grid_y}].z_histogram[z_idx]++;
+            // Accumulated hits with Cap
+            auto& hist = elevation_map_[{grid_x, grid_y}].z_histogram;
+            if (hist[z_idx] < max_z_points_) {
+                hist[z_idx]++;
+            }
             
             // Note: We allow active map updates on top of history. 
             // History is preserved and updated explicitly by generateGrid -> static_map.
@@ -218,7 +251,7 @@ private:
         int min_ay = center_y - active_rad;
         int max_ay = center_y + active_rad;
 
-        // Iterate Active Map and identify out-of-bounds cells
+        // Iterate Active Map to prune out-of-bounds cells AND apply decay
         auto it = elevation_map_.begin();
         while (it != elevation_map_.end()) {
             int gx = it->first.first;
@@ -226,10 +259,28 @@ private:
             
             if (gx < min_ax || gx > max_ax || gy < min_ay || gy > max_ay) {
                 // Remove cells outside the active area.
-                // Note: Persistent data is already saved to static_map_ during Local Map generation.
                 it = elevation_map_.erase(it);
             } else {
-                ++it;
+                // Apply Global Decay to Z-Histogram for dynamic obstacle forgetting
+                auto& hist = it->second.z_histogram;
+                for (auto hist_it = hist.begin(); hist_it != hist.end(); ) {
+                    hist_it->second -= z_decay_step_; // Subtract decay
+                    if (hist_it->second <= 0) {
+                        hist_it = hist.erase(hist_it); // Remove empty bins
+                    } else {
+                        ++hist_it;
+                    }
+                }
+                
+                // If the entire histogram is empty, the cell is truly unknown again
+                if (hist.empty()) {
+                    // Erase from Active map
+                    it = elevation_map_.erase(it);
+                    // Erase from Static Map (History) so it doesn't linger permanently
+                    static_map_.erase({gx, gy}); 
+                } else {
+                    ++it;
+                }
             }
         }
     }
@@ -272,7 +323,7 @@ private:
          map_msg.info.origin.position.y = min_y * grid_resolution_;
          map_msg.info.origin.position.z = 0.0;
          map_msg.info.origin.orientation.w = 1.0;
-         map_msg.data.resize(width * height, -1);
+         map_msg.data.resize(width * height, 0); // Default to FREE space (0) instead of UNKNOWN (-1) to avoid phantom obstacles at boundaries
 
          // Fill from Static Map ONLY
          for (const auto& kv : static_map_) {
@@ -281,7 +332,6 @@ private:
              if (x >= 0 && x < width && y >= 0 && y < height) {
                  int idx = y * width + x;
                  if (kv.second.is_obstacle) map_msg.data[idx] = 100;
-                 else map_msg.data[idx] = 0;
              }
          }
          
@@ -292,8 +342,8 @@ private:
     {
         if (elevation_map_.empty() && static_map_.empty()) return;
 
-        // Step 0: Get Robot Position
-        double robot_x = 0.0, robot_y = 0.0, robot_z = 0.0;
+        // Step 0: Get Robot Position and Rotation (Yaw)
+        double robot_x = 0.0, robot_y = 0.0, robot_z = 0.0, robot_yaw = 0.0;
         bool has_transform = false;
         try {
             if (tf_buffer_->canTransform(map_frame_id_, robot_frame_id_, tf2::TimePointZero)) {
@@ -302,6 +352,17 @@ private:
                  robot_x = transform.transform.translation.x;
                  robot_y = transform.transform.translation.y;
                  robot_z = transform.transform.translation.z;
+                 
+                 // Compute Yaw from Quaternion
+                 tf2::Quaternion q(
+                     transform.transform.rotation.x,
+                     transform.transform.rotation.y,
+                     transform.transform.rotation.z,
+                     transform.transform.rotation.w);
+                 tf2::Matrix3x3 m(q);
+                 double roll, pitch;
+                 m.getRPY(roll, pitch, robot_yaw);
+                 
                  has_transform = true;
             }
         } catch (tf2::TransformException &ex) {
@@ -322,7 +383,7 @@ private:
         
         // IMPORTANT: For Local Map, mark cells as VISITED
         auto map_msg = generateGrid(window_min_x, window_max_x, window_min_y, window_max_y, 
-                                    true, &elevation_pcl, has_transform, robot_x, robot_y, robot_z, true);
+                                    true, &elevation_pcl, has_transform, robot_x, robot_y, robot_z, robot_yaw, true);
 
         if (map_msg.info.width > 0) {
             pub_map_->publish(map_msg);
@@ -350,6 +411,7 @@ private:
         for (auto const& [z, count] : cell.z_histogram) {
             if (count >= min_valid_points_) valid_z.push_back(z);
         }
+        std::sort(valid_z.begin(), valid_z.end());
         
         if (valid_z.empty()) return false;
 
@@ -371,7 +433,7 @@ private:
     nav_msgs::msg::OccupancyGrid generateGrid(int min_x, int max_x, int min_y, int max_y, 
                                               bool apply_dilation, 
                                               pcl::PointCloud<pcl::PointXYZRGB>* out_pcl = nullptr,
-                                              bool has_robot_pose = false, double rx = 0, double ry = 0, double rz = 0,
+                                              bool has_robot_pose = false, double rx = 0, double ry = 0, double rz = 0, double ryaw = 0,
                                               bool mark_as_visited = false)
     {
         nav_msgs::msg::OccupancyGrid map_msg;
@@ -390,7 +452,7 @@ private:
         map_msg.info.origin.position.y = min_y * grid_resolution_;
         map_msg.info.origin.position.z = 0.0;
         map_msg.info.origin.orientation.w = 1.0;
-        map_msg.data.resize(width * height, -1);
+        map_msg.data.resize(width * height, 0); // Default to FREE space (0) instead of UNKNOWN (-1) to prevent phantom walls at map edges
 
         std::vector<ProcessedCell> processed_grid(width * height, {0.0, false, false});
         
@@ -420,9 +482,11 @@ private:
 
                     // --- Noise Filter & Ceiling Filter ---
                     std::vector<int> valid_z_indices;
+                    int highest_obs_z = -1000;
+                    
                     for (auto const& [z, count] : cell.z_histogram) {
                         if (count >= min_valid_points_) {
-                        // Check ceiling threshold if transform is available
+                            // Check ceiling threshold if transform is available
                             if (has_robot_pose) {
                                 double z_m = z * vertical_resolution_;
                                 if (z_m > (rz + ceiling_cutoff_)) {
@@ -430,13 +494,35 @@ private:
                                 }
                             }
                             valid_z_indices.push_back(z);
+                            if (z > highest_obs_z) highest_obs_z = z;
                         }
                     }
+                    std::sort(valid_z_indices.begin(), valid_z_indices.end());
                     if (valid_z_indices.empty()) continue; 
                     
                     // --- Ground Identification ---
                     int ground_z_idx = valid_z_indices[0]; 
                     double ground_z_m = ground_z_idx * vertical_resolution_;
+                    
+                    // --- Aggressive Observation Clearing ---
+                    // If the lidar sees the ground directly but there are "ghost" obstacle hits
+                    // floating high above that ground, aggressively penalize the ghost points
+                    // because if they were real, the ground beneath them would be occluded.
+                    if (highest_obs_z - ground_z_idx > obs_thresh) {
+                        for (auto hist_it = cell.z_histogram.begin(); hist_it != cell.z_histogram.end(); ) {
+                            // If this bin is an obstacle bin (well above ground)
+                            if (hist_it->first - ground_z_idx > obs_thresh) {
+                                hist_it->second -= z_clear_step_;
+                                if (hist_it->second <= 0) {
+                                    hist_it = cell.z_histogram.erase(hist_it);
+                                } else {
+                                    ++hist_it;
+                                }
+                            } else {
+                                ++hist_it;
+                            }
+                        }
+                    }
 
                     // --- Ceiling-Only Detection ---
                     // If the detected "ground" is far above the robot, this cell
@@ -474,17 +560,29 @@ private:
         }
 
         // Loop 2: Robot Footprint Correction
-        // Force the area under the robot to be traversable
+        // Force the area under the robot's rectangular footprint to be traversable
         if (has_robot_pose) {
             int grid_rx = static_cast<int>(std::floor(rx / grid_resolution_));
             int grid_ry = static_cast<int>(std::floor(ry / grid_resolution_));
             
-            int radius = 3; 
-            for (int dy = -radius; dy <= radius; dy++) {
-                for (int dx = -radius; dx <= radius; dx++) {
+            // In global coordinates, footprint max distance
+            double max_dist = std::sqrt(std::max(footprint_x_max_*footprint_x_max_, footprint_x_min_*footprint_x_min_) +
+                                        std::max(footprint_y_max_*footprint_y_max_, footprint_y_min_*footprint_y_min_));
+            int radius_cells = static_cast<int>(std::ceil(max_dist / grid_resolution_));
+            
+            for (int dy = -radius_cells; dy <= radius_cells; dy++) {
+                for (int dx = -radius_cells; dx <= radius_cells; dx++) {
                    int global_x = grid_rx + dx;
                    int global_y = grid_ry + dy;
                    
+                   // Real coordinates relative to robot in GLOBAL map frame
+                   double dx_m = dx * grid_resolution_;
+                   double dy_m = dy * grid_resolution_;
+
+                   // Rotate to get coordinates relative to robot's LOCAL body frame
+                   double local_x = dx_m * std::cos(-ryaw) - dy_m * std::sin(-ryaw);
+                   double local_y = dx_m * std::sin(-ryaw) + dy_m * std::cos(-ryaw);
+
                    // Convert to window coords
                    int img_x = global_x - min_x;
                    int img_y = global_y - min_y;
@@ -492,7 +590,9 @@ private:
                    if (img_x >= 0 && img_x < width && img_y >= 0 && img_y < height) {
                        int idx = img_y * width + img_x;
                        
-                       if (dx*dx + dy*dy <= radius*radius) {
+                       // Check if within footprint rectangle
+                       if (local_x >= footprint_x_min_ && local_x <= footprint_x_max_ &&
+                           local_y >= footprint_y_min_ && local_y <= footprint_y_max_) {
                             processed_grid[idx].is_obstacle = false;
                             
                             if (!processed_grid[idx].has_data) {
@@ -551,7 +651,7 @@ private:
                 const auto& current_cell = processed_grid[idx];
 
                 if (!current_cell.has_data) {
-                    map_msg.data[idx] = -1; 
+                    // map_msg.data[idx] is already 0 (Free) by default now
                     continue;
                 }
 
@@ -567,47 +667,10 @@ private:
                     map_msg.data[idx] = 100;
                     is_obstacle_final = true;
                 } else {
-                    // --- Plane Fitting (PCA) for Gradient ---
-                    Eigen::MatrixXd points(3, 9); 
-                    int count = 0;
-                    
-                    points.col(count++) = Eigen::Vector3d(x * grid_resolution_, y * grid_resolution_, current_cell.ground_z);
-
-                    for (int dy = -1; dy <= 1; dy++) {
-                        for (int dx = -1; dx <= 1; dx++) {
-                            if (dx == 0 && dy == 0) continue;
-                            int nx = x + dx;
-                            int ny = y + dy;
-                            if (nx >=0 && nx < width && ny >=0 && ny < height) {
-                                int n_idx = ny * width + nx;
-                                if (processed_grid[n_idx].has_data) {
-                                    points.col(count++) = Eigen::Vector3d(nx * grid_resolution_, ny * grid_resolution_, processed_grid[n_idx].ground_z);
-                                }
-                            }
-                        }
-                    }
-
-                    if (count < 3) {
-                        map_msg.data[idx] = 0; 
-                    } else {
-                        Eigen::MatrixXd pts = points.leftCols(count);
-                        Eigen::Vector3d centroid = pts.rowwise().mean();
-                        Eigen::MatrixXd centered = pts.colwise() - centroid;
-                        Eigen::Matrix3d cov = centered * centered.transpose();
-                        
-                        Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver(cov);
-                        Eigen::Vector3d normal = solver.eigenvectors().col(0); 
-        
-                        double angle = std::acos(std::abs(normal.z())); 
-                        double slope_deg = angle * 180.0 / M_PI;
-        
-                        if (slope_deg > max_slope_degree_) {
-                            map_msg.data[idx] = 100; // Too steep
-                            is_obstacle_final = true;
-                        } else {
-                            map_msg.data[idx] = 0;
-                        }
-                    }
+                    // --- PCA Slope Detection Disabled for Performance ---
+                    // By user request, slope detection is bypasssed 
+                    // to allow navigation on uneven terrain and save CPU.
+                    map_msg.data[idx] = 0; 
                 }
 
                 if (is_obstacle_final) {
@@ -638,38 +701,9 @@ private:
         }
         
         // --- Hole Filling (Dilation) Pass ---
-        std::vector<int8_t> dilated_data = map_msg.data; 
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                int idx = y * width + x;
-                
-                if (map_msg.data[idx] == -1) { // Only fill UNKNOWN space
-                    // Check neighbors for FREE SPACE
-                    bool neighbor_is_free = false;
-                    int dxs[] = {0, 0, -1, 1};
-                    int dys[] = {-1, 1, 0, 0};
-                    
-                    for(int i=0; i<4; ++i) {
-                         int nx = x + dxs[i];
-                         int ny = y + dys[i];
-                         if(nx >=0 && nx < width && ny>=0 && ny < height) {
-                             int n_idx = ny*width + nx;
-                             if (map_msg.data[n_idx] == 0) { // If neighbor is Free (Traversable)
-                                  neighbor_is_free = true;
-                                  break;
-                             }
-                         }
-                    }
-                    
-                    if (neighbor_is_free) {
-                        dilated_data[idx] = 0; // Mark as Free
-                        // Dilation doesn't necessarily mean we have height data, so we don't save to static_map from here effectively.
-                    }
-                }
-            }
-        }
-        map_msg.data = dilated_data;
-
+        // Disabled: Hole filling at boundaries was causing phantom obstacle artifacts
+        // when interacting with costmap inflation. Map is natively built with 0 (Free) defaults now.
+        
         return map_msg;
     }
     // --- Costmap Generation (BFS based Distance Transform) ---
@@ -740,7 +774,9 @@ private:
                     
                     if (new_dist < dist_map[n_idx]) {
                         dist_map[n_idx] = new_dist;
-                        q.push({nx, ny});
+                        if (new_dist * res < inflation_radius) {
+                            q.push({nx, ny});
+                        }
                     }
                 }
             }

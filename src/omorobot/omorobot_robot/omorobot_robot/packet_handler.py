@@ -79,7 +79,11 @@ class PacketHandler:
 
     def read_packet(self):
         try:
-            whole_packet = (self.ser.readline().split(b'\r')[0]).decode('utf-8').strip()
+            raw_line = self.ser.readline()
+            if not raw_line: # Timeout occurred, no data received
+                return
+                
+            whole_packet = (raw_line.split(b'\r')[0]).decode('utf-8').strip()
             if not whole_packet or whole_packet[0] != '#':
                 return
             # self.print(whole_packet)                                                    # for debugging

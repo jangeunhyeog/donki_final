@@ -84,32 +84,6 @@ def generate_launch_description():
         ]
     )
 
-    # 5. Elevation Mapping (카메라 지면 데이터 활용)
-    # elevation_mapping_node = Node(
-    #     package='fast_lio',
-    #     executable='elevation_mapping_node',
-    #     name='elevation_mapping_node',
-    #     output='screen',
-    #     parameters=[
-    #         {'use_sim_time': use_sim_time},
-    #         {'grid_resolution': 0.2},
-    #         {'robot_height': 1.5},
-    #         {'obstacle_height_thresh': 0.3},
-    #         {'max_slope_degree': 45.0},
-    #         {'min_valid_points': 5},
-    #         {'sensor_height': 0.3},
-    #         {'ceiling_cutoff': 1.5},
-    #         {'local_map_size': 30.0},
-    #         {'active_map_size': 30.0},
-    #         {'input_topic': '/cloud_registered'},
-    #         {'map_frame_id': 'camera_init'},
-    #         {'robot_frame_id': 'body'},
-    #         {'inflation_radius': 0.8},
-    #         {'cost_scaling_factor': 5.0},
-    #         {'robot_radius': 0.35}
-    #     ]
-    # )
-
     # 6. RViz (비활성화 — 원격 접속 시 Wayland 에러 방지)
     # rviz_node = Node(
     #     package='rviz2',
@@ -144,7 +118,6 @@ def generate_launch_description():
         camera_node,
         merger_node,
         fast_lio_node,
-        #elevation_mapping_node,
         tf_odom_camera,
         tf_body_basefootprint,
     ])
