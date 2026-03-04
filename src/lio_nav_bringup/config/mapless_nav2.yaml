@@ -72,7 +72,7 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 1.0
-        inflation_radius: 1.5
+        inflation_radius: 0.5
 
 # LOCAL COSTMAP
 local_costmap:
@@ -157,7 +157,7 @@ controller_server:
       GoalAlign.forward_point_distance: 0.6
       PathDist.scale: 32.0
       GoalDist.scale: 24.0
-      RotateToGoal.scale: 32.0
+      RotateToGoal.scale: 10.0
       RotateToGoal.slowing_factor: 3.0
       RotateToGoal.lookahead_time: -1.0
       
